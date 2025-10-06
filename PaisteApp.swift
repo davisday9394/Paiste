@@ -33,7 +33,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // 获取屏幕宽度
         let screenWidth = NSScreen.main?.frame.width ?? 1200
         
-        popover?.contentSize = NSSize(width: screenWidth * 0.9, height: 500)
+        popover?.contentSize = NSSize(width: screenWidth * 0.95, height: 500)
         popover?.behavior = .transient
         popover?.contentViewController = NSHostingController(rootView: ClipboardView())
         

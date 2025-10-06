@@ -197,6 +197,9 @@ struct ClipboardItemView: View {
                     Image(nsImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
+                        .frame(height: 100)
+                        .cornerRadius(4)
+                        .shadow(radius: 1)
                 case .file(let url):
                     HStack {
                         Image(systemName: "doc")
