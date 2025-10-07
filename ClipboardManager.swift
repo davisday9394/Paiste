@@ -191,14 +191,83 @@ class ClipboardManager: ObservableObject {
             type: .text
         )
         
-        // 添加示例图片
-        if let sampleImage = NSImage(systemSymbolName: "photo", accessibilityDescription: nil) {
-            let imageItem = ClipboardItem(
-                content: .image(sampleImage),
-                type: .image
-            )
-            items.append(imageItem)
+        // 添加真实图片示例
+        // 创建一个简单的彩色图片
+        let imageSize = NSSize(width: 300, height: 200)
+        let image = NSImage(size: imageSize)
+        
+        image.lockFocus()
+        // 绘制渐变背景
+        let gradient = NSGradient(colors: [NSColor.blue, NSColor.purple])
+        gradient?.draw(in: NSRect(origin: .zero, size: imageSize), angle: 45)
+        
+        // 绘制一些简单的形状
+        NSColor.white.setFill()
+        let circlePath = NSBezierPath(ovalIn: NSRect(x: 50, y: 50, width: 100, height: 100))
+        circlePath.fill()
+        
+        NSColor.yellow.setFill()
+        let rectanglePath = NSBezierPath(rect: NSRect(x: 180, y: 70, width: 80, height: 60))
+        rectanglePath.fill()
+        
+        // 添加文字
+        let text = "示例图片"
+        let font = NSFont.boldSystemFont(ofSize: 24)
+        let textAttributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor.white
+        ]
+        
+        let textSize = text.size(withAttributes: textAttributes)
+        let textPoint = NSPoint(x: (imageSize.width - textSize.width) / 2, y: 20)
+        text.draw(at: textPoint, withAttributes: textAttributes)
+        
+        image.unlockFocus()
+        
+        let imageItem = ClipboardItem(
+            content: .image(image),
+            type: .image
+        )
+        items.append(imageItem)
+        
+        // 再添加一个不同的图片
+        let image2 = NSImage(size: imageSize)
+        image2.lockFocus()
+        
+        // 绘制不同的渐变背景
+        let gradient2 = NSGradient(colors: [NSColor.green, NSColor.orange])
+        gradient2?.draw(in: NSRect(origin: .zero, size: imageSize), angle: 135)
+        
+        // 绘制不同的形状
+        NSColor.red.setFill()
+        let starPath = NSBezierPath()
+        let center = NSPoint(x: imageSize.width / 2, y: imageSize.height / 2)
+        let outerRadius: CGFloat = 80
+        let innerRadius: CGFloat = 40
+        let points = 5
+        
+        for i in 0..<points * 2 {
+            let radius = i % 2 == 0 ? outerRadius : innerRadius
+            let angle = CGFloat(i) * .pi / CGFloat(points)
+            let x = center.x + radius * sin(angle)
+            let y = center.y + radius * cos(angle)
+            
+            if i == 0 {
+                starPath.move(to: NSPoint(x: x, y: y))
+            } else {
+                starPath.line(to: NSPoint(x: x, y: y))
+            }
         }
+        starPath.close()
+        starPath.fill()
+        
+        image2.unlockFocus()
+        
+        let imageItem2 = ClipboardItem(
+            content: .image(image2),
+            type: .image
+        )
+        items.append(imageItem2)
         
         // 添加示例文件
         if let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {

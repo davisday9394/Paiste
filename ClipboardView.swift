@@ -194,12 +194,34 @@ struct ClipboardItemView: View {
                     Text(text)
                         .lineLimit(5)
                 case .image(let image):
-                    Image(nsImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(height: 100)
-                        .cornerRadius(4)
-                        .shadow(radius: 1)
+                    ZStack {
+                        Color.white // 白色背景确保图片可见
+                        Image(nsImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                    }
+                    .frame(width: 180, height: 120)
+                    .cornerRadius(4)
+                    .shadow(radius: 1)
+                    .onTapGesture {
+                        // 创建一个临时窗口来显示完整图片
+                        let window = NSWindow(
+                            contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
+                            styleMask: [.titled, .closable, .resizable],
+                            backing: .buffered,
+                            defer: false
+                        )
+                        window.title = "图片预览"
+                        window.contentView = NSHostingView(rootView: 
+                            Image(nsImage: image)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .padding()
+                        )
+                        window.center()
+                        window.makeKeyAndOrderFront(nil)
+                    }
                 case .file(let url):
                     HStack {
                         Image(systemName: "doc")

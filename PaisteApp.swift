@@ -30,10 +30,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // 创建弹出窗口
         popover = NSPopover()
         
-        // 获取屏幕宽度
-        let screenWidth = NSScreen.main?.frame.width ?? 1200
+        // 获取当前活动屏幕的宽度
+        let activeScreen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
+        let screenWidth = activeScreen?.frame.width ?? 1200
         
-        popover?.contentSize = NSSize(width: screenWidth * 0.95, height: 500)
+        // 使用固定宽度而不是百分比，确保在任何屏幕上都有足够的宽度
+        popover?.contentSize = NSSize(width: min(screenWidth - 40, 1800), height: 500)
         popover?.behavior = .transient
         popover?.contentViewController = NSHostingController(rootView: ClipboardView())
         
