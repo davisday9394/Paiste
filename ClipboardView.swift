@@ -87,7 +87,6 @@ struct ClipboardView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: 500)
         .onAppear {
-            clipboardManager.startMonitoring()
             // 默认选择第一个项目
             if !filteredClipboardItems.isEmpty {
                 selectedItemIndex = 0

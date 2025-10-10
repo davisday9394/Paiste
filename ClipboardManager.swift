@@ -35,16 +35,95 @@ enum ClipboardContent {
 }
 
 // 剪贴板项目
-class ClipboardItem: Identifiable {
-    let id = UUID()
+class ClipboardItem: Identifiable, Codable {
+    let id: UUID
     let content: ClipboardContent
     let date: Date
     let type: ClipboardCategory
     
     init(content: ClipboardContent, type: ClipboardCategory) {
+        self.id = UUID()
         self.content = content
         self.date = Date()
         self.type = type
+    }
+    
+    // 用于Codable的编码
+    enum CodingKeys: String, CodingKey {
+        case id, content, date, type
+    }
+    
+    // 定义内容编码所需的键
+    enum ContentCodingKeys: String, CodingKey {
+        case type, value
+    }
+    
+    // 编码方法
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(date, forKey: .date)
+        try container.encode(type.rawValue, forKey: .type)
+        
+        // 根据内容类型进行不同的编码
+        var contentContainer = container.nestedContainer(keyedBy: ContentCodingKeys.self, forKey: .content)
+        
+        switch content {
+        case .text(let text):
+            try contentContainer.encode("text", forKey: .type)
+            try contentContainer.encode(text, forKey: .value)
+        case .image(let image):
+            if let tiffData = image.tiffRepresentation {
+                try contentContainer.encode("image", forKey: .type)
+                try contentContainer.encode(tiffData, forKey: .value)
+            }
+        case .file(let url):
+            try contentContainer.encode("file", forKey: .type)
+            try contentContainer.encode(url.absoluteString, forKey: .value)
+        }
+    }
+    
+    // 解码方法
+    required init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        date = try container.decode(Date.self, forKey: .date)
+        let typeString = try container.decode(String.self, forKey: .type)
+        guard let decodedType = ClipboardCategory(rawValue: typeString) else {
+            throw DecodingError.dataCorruptedError(forKey: .type, in: container, debugDescription: "Invalid type")
+        }
+        type = decodedType
+        
+        // 解码内容
+        let contentContainer = try container.nestedContainer(keyedBy: ContentCodingKeys.self, forKey: .content)
+        let contentType = try contentContainer.decode(String.self, forKey: .type)
+        
+        // 定义内容解码所需的键
+        enum ContentCodingKeys: String, CodingKey {
+            case type, value
+        }
+        
+        switch contentType {
+        case "text":
+            let text = try contentContainer.decode(String.self, forKey: .value)
+            content = .text(text)
+        case "image":
+            let imageData = try contentContainer.decode(Data.self, forKey: .value)
+            if let image = NSImage(data: imageData) {
+                content = .image(image)
+            } else {
+                throw DecodingError.dataCorruptedError(forKey: .value, in: contentContainer, debugDescription: "Invalid image data")
+            }
+        case "file":
+            let urlString = try contentContainer.decode(String.self, forKey: .value)
+            if let url = URL(string: urlString) {
+                content = .file(url)
+            } else {
+                throw DecodingError.dataCorruptedError(forKey: .value, in: contentContainer, debugDescription: "Invalid URL string")
+            }
+        default:
+            throw DecodingError.dataCorruptedError(forKey: .type, in: contentContainer, debugDescription: "Unknown content type")
+        }
     }
     
     var dateFormatted: String {
@@ -60,12 +139,10 @@ class ClipboardItem: Identifiable {
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
             pasteboard.setString(text, forType: .string)
-            
         case .image(let image):
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
             pasteboard.writeObjects([image])
-            
         case .file(let url):
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
@@ -74,7 +151,6 @@ class ClipboardItem: Identifiable {
     }
 }
 
-// 剪贴板管理器
 class ClipboardManager: ObservableObject {
     static let shared = ClipboardManager()
     
@@ -83,11 +159,143 @@ class ClipboardManager: ObservableObject {
     private var timer: Timer?
     private var lastChangeCount: Int = 0
     
-    private init() {
-        // 添加一些示例数据
-        addSampleItems()
+    // 最大存储项目数
+    private let maxStoredItems = 100
+    
+    // 存储URL
+    private var storageURL: URL {
+        let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+        return paths[0].appendingPathComponent("clipboard_history.json")
     }
     
+    private init() {
+        // 从文件加载数据
+        loadItems()
+        
+        // 如果没有加载到数据，添加一些示例数据
+        if items.isEmpty {
+            self.addSampleItems()
+        }
+        
+        // 设置定时器监控剪贴板变化
+        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.checkForPasteboardChanges()
+        }
+    }
+    
+    // 保存数据到文件
+    private func saveItems() {
+        // 创建可存储的数据结构
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        
+        do {
+            // 最多只保存maxStoredItems个项目
+            let itemsToSave = Array(self.items.prefix(maxStoredItems))
+            let data = try encoder.encode(itemsToSave)
+            try data.write(to: storageURL)
+            print("成功保存\(itemsToSave.count)个剪贴板项目到文件")
+        } catch {
+            print("保存剪贴板历史失败: \(error.localizedDescription)")
+        }
+    }
+    
+    // 从文件加载数据
+    private func loadItems() {
+        guard FileManager.default.fileExists(atPath: storageURL.path) else {
+            print("剪贴板历史文件不存在")
+            return
+        }
+        
+        do {
+            let data = try Data(contentsOf: storageURL)
+            let decoder = JSONDecoder()
+            self.items = try decoder.decode([ClipboardItem].self, from: data)
+            print("成功从文件加载\(items.count)个剪贴板项目")
+        } catch {
+            print("加载剪贴板历史失败: \(error.localizedDescription)")
+            self.items = []
+        }
+    }
+    
+    private func checkForPasteboardChanges() {
+        let pasteboard = NSPasteboard.general
+        if pasteboard.changeCount != lastChangeCount {
+            lastChangeCount = pasteboard.changeCount
+            
+            // 检查是否有新的文本
+            if let text = pasteboard.string(forType: .string), !text.isEmpty {
+                let item = ClipboardItem(content: .text(text), type: .text)
+                self.addItem(item)
+                return
+            }
+            
+            // 检查是否有新的图片
+            if let image = readPasteboardImage() {
+                let item = ClipboardItem(content: .image(image), type: .image)
+                self.addItem(item)
+                return
+            }
+            
+            // 检查是否有新的文件
+            if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !urls.isEmpty {
+                let item = ClipboardItem(content: .file(urls[0]), type: .file)
+                self.addItem(item)
+                return
+            }
+        }
+    }
+    
+    // 从剪贴板读取图片的多种方法
+    private func readPasteboardImage() -> NSImage? {
+        let pasteboard = NSPasteboard.general
+        
+        // 方法1: 直接使用NSImage初始化
+        if let image = NSImage(pasteboard: pasteboard) {
+            print("DEBUG: 成功通过NSImage(pasteboard:)读取图片")
+            return image
+        }
+        
+        // 方法2: 读取TIFF数据
+        if let tiffData = pasteboard.data(forType: .tiff), let image = NSImage(data: tiffData) {
+            print("DEBUG: 成功通过TIFF数据读取图片")
+            return image
+        }
+        
+        // 方法3: 读取PNG数据
+        if let pngData = pasteboard.data(forType: .png), let image = NSImage(data: pngData) {
+            print("DEBUG: 成功通过PNG数据读取图片")
+            return image
+        }
+        
+        // 方法4: 尝试读取其他图片类型
+        let imageTypes = [
+            NSPasteboard.PasteboardType("public.jpeg"),
+            NSPasteboard.PasteboardType("public.gif"),
+            NSPasteboard.PasteboardType("com.apple.pict")
+        ]
+        
+        for type in imageTypes {
+            if let data = pasteboard.data(forType: type), let image = NSImage(data: data) {
+                print("DEBUG: 成功通过\(type.rawValue)类型读取图片")
+                return image
+            }
+        }
+        
+        // 方法5: 尝试从文件URL读取图片
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !urls.isEmpty {
+            let url = urls[0]
+            if let image = NSImage(contentsOf: url) {
+                print("DEBUG: 成功从URL读取图片: \(url.path)")
+                return image
+            }
+        }
+        
+        print("DEBUG: 无法从剪贴板读取图片，可用类型: \(pasteboard.types?.map { $0.rawValue } ?? [])")
+        return nil
+    }
+    
+    // 复制项目到剪贴板
     func copyItemToPasteboard(_ item: ClipboardItem) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
@@ -103,46 +311,72 @@ class ClipboardManager: ObservableObject {
     }
     
     func moveItemToTop(_ item: ClipboardItem) {
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
             if let index = self.items.firstIndex(where: { $0.id == item.id }) {
                 let movedItem = self.items.remove(at: index)
                 self.items.insert(movedItem, at: 0)
+                
+                // 保存数据到文件
+                self.saveItems()
             }
         }
     }
     
-    func startMonitoring() {
-        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            self?.checkForPasteboardChanges()
+    func moveItemToTop(at index: Int) {
+        if index >= 0 && index < items.count {
+            let item = items[index]
+            moveItemToTop(item)
         }
     }
     
-    func stopMonitoring() {
-        timer?.invalidate()
-        timer = nil
+    func removeItem(at index: Int) {
+        if index >= 0 && index < items.count {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.items.remove(at: index)
+                
+                // 保存数据到文件
+                self.saveItems()
+            }
+        }
     }
     
-    private func checkForPasteboardChanges() {
-        let pasteboard = NSPasteboard.general
-        if pasteboard.changeCount != lastChangeCount {
-            lastChangeCount = pasteboard.changeCount
+    func removeItem(_ item: ClipboardItem) {
+        if let index = items.firstIndex(where: { $0.id == item.id }) {
+            removeItem(at: index)
+        }
+    }
+    
+    func clearItems() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.items.removeAll()
             
-            if let string = pasteboard.string(forType: .string) {
-                let item = ClipboardItem(content: .text(string), type: .text)
-                addItem(item)
-            } else if let image = pasteboard.readObjects(forClasses: [NSImage.self], options: nil)?.first as? NSImage {
-                let item = ClipboardItem(content: .image(image), type: .image)
-                addItem(item)
-            } else if let url = pasteboard.readObjects(forClasses: [NSURL.self], options: nil)?.first as? URL {
-                let item = ClipboardItem(content: .file(url), type: .file)
-                addItem(item)
-            }
+            // 保存数据到文件
+            self.saveItems()
+        }
+    }
+    
+    // 比较两个内容是否相同
+    private func isSameContent(_ content1: ClipboardContent, _ content2: ClipboardContent) -> Bool {
+        switch (content1, content2) {
+        case (.text(let text1), .text(let text2)):
+            return text1 == text2
+        case (.image, .image):
+            return true // 简单处理，认为所有图片都是重复的
+        case (.file(let url1), .file(let url2)):
+            return url1.path == url2.path
+        default:
+            return false
         }
     }
     
     func addItem(_ item: ClipboardItem) {
-        DispatchQueue.main.async {
-            // 检查是否已存在相同内容的项目
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            // 检查是否已存在相同内容
             let isDuplicate = self.items.contains { existingItem in
                 switch (existingItem.content, item.content) {
                 case (.text(let existingText), .text(let newText)):
@@ -165,120 +399,19 @@ class ClipboardManager: ObservableObject {
                 if self.items.count > 100 {
                     self.items.removeLast()
                 }
+                
+                // 保存数据到文件
+                self.saveItems()
             }
         }
     }
     
     private func addSampleItems() {
         // 添加示例文本
-        let textItem1 = ClipboardItem(
-            content: .text("工作与生活平衡\n新的见解"),
-            type: .text
-        )
+        let textItem = ClipboardItem(content: .text("这是一个示例文本"), type: .text)
+        self.items.append(textItem)
         
-        let textItem2 = ClipboardItem(
-            content: .text("Blue Bottle Coffee\n123 Main St\nSan Francisco, CA"),
-            type: .text
-        )
-        
-        let textItem3 = ClipboardItem(
-            content: .text("#5E6AD2"),
-            type: .text
-        )
-        
-        let textItem4 = ClipboardItem(
-            content: .text("Jordan Gordon\nArt Director\ngordon@studio13\nDesigner"),
-            type: .text
-        )
-        
-        // 添加真实图片示例
-        // 创建一个简单的彩色图片
-        let imageSize = NSSize(width: 300, height: 200)
-        let image = NSImage(size: imageSize)
-        
-        image.lockFocus()
-        // 绘制渐变背景
-        let gradient = NSGradient(colors: [NSColor.blue, NSColor.purple])
-        gradient?.draw(in: NSRect(origin: .zero, size: imageSize), angle: 45)
-        
-        // 绘制一些简单的形状
-        NSColor.white.setFill()
-        let circlePath = NSBezierPath(ovalIn: NSRect(x: 50, y: 50, width: 100, height: 100))
-        circlePath.fill()
-        
-        NSColor.yellow.setFill()
-        let rectanglePath = NSBezierPath(rect: NSRect(x: 180, y: 70, width: 80, height: 60))
-        rectanglePath.fill()
-        
-        // 添加文字
-        let text = "示例图片"
-        let font = NSFont.boldSystemFont(ofSize: 24)
-        let textAttributes: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: NSColor.white
-        ]
-        
-        let textSize = text.size(withAttributes: textAttributes)
-        let textPoint = NSPoint(x: (imageSize.width - textSize.width) / 2, y: 20)
-        text.draw(at: textPoint, withAttributes: textAttributes)
-        
-        image.unlockFocus()
-        
-        let imageItem = ClipboardItem(
-            content: .image(image),
-            type: .image
-        )
-        items.append(imageItem)
-        
-        // 再添加一个不同的图片
-        let image2 = NSImage(size: imageSize)
-        image2.lockFocus()
-        
-        // 绘制不同的渐变背景
-        let gradient2 = NSGradient(colors: [NSColor.green, NSColor.orange])
-        gradient2?.draw(in: NSRect(origin: .zero, size: imageSize), angle: 135)
-        
-        // 绘制不同的形状
-        NSColor.red.setFill()
-        let starPath = NSBezierPath()
-        let center = NSPoint(x: imageSize.width / 2, y: imageSize.height / 2)
-        let outerRadius: CGFloat = 80
-        let innerRadius: CGFloat = 40
-        let points = 5
-        
-        for i in 0..<points * 2 {
-            let radius = i % 2 == 0 ? outerRadius : innerRadius
-            let angle = CGFloat(i) * .pi / CGFloat(points)
-            let x = center.x + radius * sin(angle)
-            let y = center.y + radius * cos(angle)
-            
-            if i == 0 {
-                starPath.move(to: NSPoint(x: x, y: y))
-            } else {
-                starPath.line(to: NSPoint(x: x, y: y))
-            }
-        }
-        starPath.close()
-        starPath.fill()
-        
-        image2.unlockFocus()
-        
-        let imageItem2 = ClipboardItem(
-            content: .image(image2),
-            type: .image
-        )
-        items.append(imageItem2)
-        
-        // 添加示例文件
-        if let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
-            let fileItem = ClipboardItem(
-                content: .file(documentsURL),
-                type: .file
-            )
-            items.append(fileItem)
-        }
-        
-        // 添加示例项目
-        items.append(contentsOf: [textItem1, textItem2, textItem3, textItem4])
+        // 保存数据到文件
+        self.saveItems()
     }
 }
