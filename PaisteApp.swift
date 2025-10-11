@@ -31,6 +31,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private var shortcutManager = GlobalShortcutManager()
     private var currentItemIndex = 0
     
+    // 用于通知 ClipboardView 重置选中索引的触发器
+    @Published var resetSelectionTrigger = false
+    
     override init() {
         super.init()
         AppDelegate.shared = self
@@ -165,6 +168,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         
         // 重置当前选中项索引
         currentItemIndex = 0
+        
+        // 触发 ClipboardView 重置选中索引
+        resetSelectionTrigger.toggle()
         
         // 获取屏幕尺寸和窗口尺寸
         guard let screen = NSScreen.main else { return }

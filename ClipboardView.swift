@@ -4,6 +4,7 @@ struct ClipboardView: View {
     @State private var searchText = ""
     @State private var selectedCategory: ClipboardCategory = .all
     @ObservedObject private var clipboardManager = ClipboardManager.shared
+    @ObservedObject private var appDelegate = AppDelegate.shared!
     
     @State private var selectedItemIndex: Int = 0
     @State private var scrollViewProxy: ScrollViewProxy? = nil
@@ -98,10 +99,16 @@ struct ClipboardView: View {
                 .shadow(color: .black.opacity(0.2), radius: 20, x: 0, y: 10)
         )
         .onAppear {
-            // 默认选择第一个项目
-            if !filteredClipboardItems.isEmpty {
-                selectedItemIndex = 0
-            }
+            // 每次显示时都重置到第一个项目
+            selectedItemIndex = 0
+        }
+        .onChange(of: searchText) { _ in
+            // 搜索文本变化时重置选中索引
+            selectedItemIndex = 0
+        }
+        .onChange(of: appDelegate.resetSelectionTrigger) { _ in
+            // 当窗口显示时重置选中索引
+            selectedItemIndex = 0
         }
         .onKeyPress(.leftArrow) {
             if selectedItemIndex > 0 {
