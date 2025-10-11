@@ -10,9 +10,9 @@ struct ClipboardView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // 顶部工具栏
+            // 顶部工具栏 - 搜索框和分类按钮在同一行居中显示
             HStack(spacing: 16) {
-                // 搜索输入框
+                // 搜索框
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
                         .foregroundColor(.secondary)
@@ -26,9 +26,7 @@ struct ClipboardView: View {
                 .padding(.vertical, 8)
                 .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
                 .cornerRadius(20)
-                .frame(width: 240)
-                
-                Spacer()
+                .frame(width: 200)
                 
                 // 分类标签栏
                 HStack(spacing: 8) {

@@ -111,7 +111,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private func setupClipboardWindow() {
         // 获取主屏幕信息
         guard let screen = NSScreen.main else { return }
-        let screenFrame = screen.visibleFrame
+        let screenFrame = screen.frame  // 使用完整屏幕区域
         
         // 设置窗口尺寸（铺满整个屏幕宽度）
         let windowWidth: CGFloat = screenFrame.width
@@ -134,7 +134,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         guard let window = clipboardWindow else { return }
         
         // 设置窗口属性
-        window.level = .floating
+        window.level = .statusBar  // 使用statusBar级别确保在dock栏之上
         window.isOpaque = false
         window.backgroundColor = NSColor.clear
         window.hasShadow = true
@@ -168,7 +168,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         
         // 获取屏幕尺寸和窗口尺寸
         guard let screen = NSScreen.main else { return }
-        let screenFrame = screen.visibleFrame
+        // 使用完整屏幕区域，窗口层级已设置为statusBar确保在dock之上
+        let screenFrame = screen.frame
         let windowFrame = window.frame
         
         // 从底部弹出的实现
