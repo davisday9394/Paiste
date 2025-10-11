@@ -3,6 +3,7 @@ import Carbon
 
 class GlobalShortcutManager {
     private var eventHandler: EventHandlerRef?
+    private var hotKeyRef: EventHotKeyRef?
     private var shortcutHandler: (() -> Void)?
     
     deinit {
@@ -37,9 +38,8 @@ class GlobalShortcutManager {
         // 注册热键
         var hotKeyID = EventHotKeyID(signature: OSType(0x50414953), // "PAIS"
                                     id: 1)
-        var hotKeyRef: EventHotKeyRef?
         
-        RegisterEventHotKey(
+        let result = RegisterEventHotKey(
             UInt32(keyCode),
             UInt32(modifiers),
             hotKeyID,
@@ -47,6 +47,10 @@ class GlobalShortcutManager {
             0,
             &hotKeyRef
         )
+        
+        if result != noErr {
+            print("Failed to register hotkey: \(result)")
+        }
     }
     
     func unregister() {
@@ -54,6 +58,13 @@ class GlobalShortcutManager {
             RemoveEventHandler(eventHandler)
             self.eventHandler = nil
         }
+        
+        if let hotKeyRef = hotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
+            self.hotKeyRef = nil
+        }
+        
+        shortcutHandler = nil
     }
 }
 
