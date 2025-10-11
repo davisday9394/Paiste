@@ -172,14 +172,39 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // 触发 ClipboardView 重置选中索引
         resetSelectionTrigger.toggle()
         
-        // 获取屏幕尺寸和窗口尺寸
-        guard let screen = NSScreen.main else { return }
+        // 获取当前鼠标位置所在的屏幕
+        guard let screen = getCurrentScreen() else { return }
         // 使用完整屏幕区域，窗口层级已设置为statusBar确保在dock之上
         let screenFrame = screen.frame
+        
+        // 动态调整窗口尺寸以适应当前屏幕
+        let windowWidth = screenFrame.width
+        let windowHeight: CGFloat = 300
+        let windowX = screenFrame.minX
+        let windowY = screenFrame.minY
+        
+        let newWindowFrame = NSRect(x: windowX, y: windowY, width: windowWidth, height: windowHeight)
+        window.setFrame(newWindowFrame, display: false)
+        
         let windowFrame = window.frame
         
         // 从底部弹出的实现
         showFromBottom(window: window, screenFrame: screenFrame, windowFrame: windowFrame)
+    }
+    
+    // 获取当前鼠标位置所在的屏幕
+    private func getCurrentScreen() -> NSScreen? {
+        let mouseLocation = NSEvent.mouseLocation
+        
+        // 遍历所有屏幕，找到包含鼠标位置的屏幕
+        for screen in NSScreen.screens {
+            if screen.frame.contains(mouseLocation) {
+                return screen
+            }
+        }
+        
+        // 如果没有找到，返回主屏幕作为备选
+        return NSScreen.main
     }
     
     // 从顶部弹出的实现
