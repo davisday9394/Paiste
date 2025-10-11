@@ -34,6 +34,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     // 用于通知 ClipboardView 重置选中索引的触发器
     @Published var resetSelectionTrigger = false
     
+    // 记录显示剪切板窗口前的活跃应用程序
+    private var previousActiveApp: NSRunningApplication?
+    
     override init() {
         super.init()
         AppDelegate.shared = self
@@ -166,6 +169,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private func showClipboardWindow() {
         guard let window = clipboardWindow else { return }
         
+        // 记录当前活跃的应用程序（在显示剪切板窗口前）
+        previousActiveApp = NSWorkspace.shared.frontmostApplication
+        
         // 重置当前选中项索引
         currentItemIndex = 0
         
@@ -271,6 +277,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         
         // 从底部隐藏的实现
         hideToBottom(window: window)
+        
+        // 恢复之前活跃应用程序的焦点
+        restorePreviousAppFocus()
+    }
+    
+    private func restorePreviousAppFocus() {
+        // 延迟一小段时间确保窗口隐藏动画完成
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            guard let self = self, let previousApp = self.previousActiveApp else { return }
+            
+            // 尝试激活之前的应用程序
+            previousApp.activate(options: [.activateIgnoringOtherApps])
+            
+            // 清除记录的应用程序引用
+            self.previousActiveApp = nil
+        }
     }
     
     // 从顶部隐藏的实现
