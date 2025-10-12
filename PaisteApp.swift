@@ -1,14 +1,95 @@
 import SwiftUI
 import ServiceManagement
 
-// 自定义窗口类，确保能接收键盘事件
+// 自定义窗口类，确保能接收键盘事件并处理失焦事件
 class ClipboardWindow: NSWindow {
+    weak var appDelegate: AppDelegate?
+    private var globalMouseMonitor: Any?
+    private var applicationObserver: NSObjectProtocol?
+    private var workspaceObserver: NSObjectProtocol?
+    
     override var canBecomeKey: Bool {
         return true
     }
     
     override var canBecomeMain: Bool {
         return true
+    }
+    
+    // 开始监听失焦事件
+    func startFocusMonitoring() {
+        setupGlobalMouseMonitor()
+        setupApplicationSwitchMonitor()
+        setupWorkspaceMonitor()
+    }
+    
+    // 停止监听失焦事件
+    func stopFocusMonitoring() {
+        if let monitor = globalMouseMonitor {
+            NSEvent.removeMonitor(monitor)
+            globalMouseMonitor = nil
+        }
+        
+        if let observer = applicationObserver {
+            NotificationCenter.default.removeObserver(observer)
+            applicationObserver = nil
+        }
+        
+        if let observer = workspaceObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+            workspaceObserver = nil
+        }
+    }
+    
+    // 监听全局鼠标点击事件
+    private func setupGlobalMouseMonitor() {
+        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self = self, let appDelegate = self.appDelegate else { return }
+            
+            // 获取点击位置
+            let clickLocation = event.locationInWindow
+            let screenLocation = NSEvent.mouseLocation
+            
+            // 检查点击是否在窗口外部
+            if !self.frame.contains(screenLocation) {
+                // 点击在窗口外部，隐藏剪切板
+                DispatchQueue.main.async {
+                    appDelegate.hideClipboardWindow()
+                }
+            }
+        }
+    }
+    
+    // 监听应用切换事件（Cmd+Tab）
+    private func setupApplicationSwitchMonitor() {
+        applicationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification,
+            object: NSApplication.shared,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self, let appDelegate = self.appDelegate else { return }
+            // 应用失去焦点，隐藏剪切板
+            appDelegate.hideClipboardWindow()
+        }
+    }
+    
+    // 监听桌面切换事件（Ctrl+左右键）
+    private func setupWorkspaceMonitor() {
+        workspaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self, let appDelegate = self.appDelegate else { return }
+            // 立即清除之前的应用引用，防止跳回原桌面
+            appDelegate.clearPreviousApp()
+            // 桌面切换，隐藏剪切板但不恢复焦点（避免跳回原桌面）
+            appDelegate.hideClipboardWindow(restoreFocus: false)
+        }
+    }
+    
+    deinit {
+        stopFocusMonitoring()
     }
 }
 
@@ -408,6 +489,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         
         guard let window = clipboardWindow else { return }
         
+        // 设置appDelegate引用，用于失焦检测
+        window.appDelegate = self
+        
         // 设置窗口属性
         window.level = .statusBar  // 使用statusBar级别确保在dock栏之上
         window.isOpaque = false
@@ -465,6 +549,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         
         // 从底部弹出的实现
         showFromBottom(window: window, screenFrame: screenFrame, windowFrame: windowFrame)
+        
+        // 启动失焦监听
+        window.startFocusMonitoring()
     }
     
     // 获取当前鼠标位置所在的屏幕
@@ -541,14 +628,27 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         }
     }
     
-    func hideClipboardWindow() {
+    func hideClipboardWindow(restoreFocus: Bool = true) {
         guard let window = clipboardWindow else { return }
+        
+        // 停止失焦监听
+        window.stopFocusMonitoring()
         
         // 从底部隐藏的实现
         hideToBottom(window: window)
         
-        // 恢复之前活跃应用程序的焦点
-        restorePreviousAppFocus()
+        // 根据参数决定是否恢复之前活跃应用程序的焦点
+        if restoreFocus {
+            restorePreviousAppFocus()
+        } else {
+            // 清除记录的应用程序引用，但不激活
+            previousActiveApp = nil
+        }
+    }
+    
+    // 清除之前的应用引用（用于桌面切换等场景）
+    func clearPreviousApp() {
+        previousActiveApp = nil
     }
     
     private func restorePreviousAppFocus() {
@@ -588,7 +688,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         }
     }
     
-    // 从底部隐藏的实现（原有实现，保留用于对比）
+    // 从底部隐藏的实现（优化版本，更快的关闭速度）
     private func hideToBottom(window: ClipboardWindow) {
         guard let screen = NSScreen.main else { return }
         let screenFrame = screen.visibleFrame
@@ -598,20 +698,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         let targetY = screenFrame.minY - currentFrame.height - 20
         let targetFrame = NSRect(x: currentFrame.minX, y: targetY, width: currentFrame.width, height: currentFrame.height)
         
-        // 添加滑出和淡出动画
+        // 优化的快速隐藏动画
         NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.15
-            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            context.duration = 0.08  // 减少动画时间从0.15到0.08秒
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)  // 使用更快的缓动函数
             window.animator().alphaValue = 0.0
             window.animator().setFrame(targetFrame, display: true)
         }) { [weak self] in
-            // 复杂的完成回调，可能导致内存管理问题
+            // 简化的完成回调
             guard let self = self, let window = self.clipboardWindow else { return }
             window.orderOut(nil)
             window.alphaValue = 1.0
-            // 重置窗口位置到正确的显示位置，为下次显示做准备
-            let correctFrame = NSRect(x: screenFrame.minX, y: screenFrame.minY, width: screenFrame.width, height: 300)
-            window.setFrame(correctFrame, display: false)
+            // 不需要复杂的位置重置，因为下次显示时会重新计算
         }
     }
 }

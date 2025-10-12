@@ -203,13 +203,13 @@ struct ClipboardItemView: View {
             HStack {
                 Image(systemName: item.type.iconName)
                     .foregroundColor(.secondary)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 13, weight: .medium))
                 Text(item.type.displayName)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundColor(.secondary)
                 Spacer()
                 Text(item.dateFormatted)
-                    .font(.system(size: 10))
+                    .font(.system(size: 12))
                     .foregroundColor(.secondary)
             }
             
@@ -218,7 +218,7 @@ struct ClipboardItemView: View {
                 switch item.content {
                 case .text(let text):
                     Text(text)
-                        .font(.system(size: 13, weight: .regular))
+                        .font(.system(size: 15, weight: .regular))
                         .foregroundColor(.primary)
                         .lineLimit(4)
                         .multilineTextAlignment(.leading)
@@ -256,10 +256,10 @@ struct ClipboardItemView: View {
                 case .file(let url):
                     HStack(spacing: 8) {
                         Image(systemName: "doc.fill")
-                            .font(.system(size: 16))
+                            .font(.system(size: 18))
                             .foregroundColor(.accentColor)
                         Text(url.lastPathComponent)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.system(size: 15, weight: .medium))
                             .foregroundColor(.primary)
                             .lineLimit(2)
                     }
