@@ -48,8 +48,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         
         if let button = statusItem?.button {
             button.image = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "Paiste")
-            button.action = #selector(togglePopover)
+            button.action = #selector(statusItemClicked)
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
+        
+        // 创建上下文菜单
+        setupStatusItemMenu()
         
         // 创建底部弹出窗口
         setupClipboardWindow()
@@ -72,8 +76,49 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         }
     }
     
+    @objc func statusItemClicked() {
+        guard let event = NSApp.currentEvent else { return }
+        
+        if event.type == .rightMouseUp {
+            // 右键点击显示菜单
+            statusItem?.menu = createContextMenu()
+            statusItem?.button?.performClick(nil)
+            statusItem?.menu = nil
+        } else {
+            // 左键点击切换剪切板窗口
+            toggleClipboardWindow()
+        }
+    }
+    
     @objc func togglePopover() {
         toggleClipboardWindow()
+    }
+    
+    private func setupStatusItemMenu() {
+        // 初始状态不设置菜单，只在右键时临时显示
+    }
+    
+    private func createContextMenu() -> NSMenu {
+        let menu = NSMenu()
+        
+        // 显示/隐藏剪切板
+        let toggleItem = NSMenuItem(title: "显示剪切板", action: #selector(togglePopover), keyEquivalent: "")
+        toggleItem.target = self
+        menu.addItem(toggleItem)
+        
+        // 分隔线
+        menu.addItem(NSMenuItem.separator())
+        
+        // 退出应用程序
+        let quitItem = NSMenuItem(title: "退出 Paiste", action: #selector(quitApplication), keyEquivalent: "q")
+        quitItem.target = self
+        menu.addItem(quitItem)
+        
+        return menu
+    }
+    
+    @objc private func quitApplication() {
+        NSApplication.shared.terminate(nil)
     }
     
     func setupGlobalShortcut() {
