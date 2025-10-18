@@ -8,40 +8,73 @@ struct ClipboardView: View {
     
     @State private var selectedItemIndex: Int = 0
     @State private var scrollViewProxy: ScrollViewProxy? = nil
+    @State private var showingClearConfirmation = false
     
     var body: some View {
         VStack(spacing: 0) {
             // 顶部工具栏 - 搜索框和分类按钮在同一行居中显示
             HStack(spacing: 16) {
-                // 搜索框
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(.secondary)
-                        .font(.system(size: 14))
-                    
-                    TextField("搜索剪切板", text: $searchText)
-                        .textFieldStyle(PlainTextFieldStyle())
-                        .font(.system(size: 14))
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
-                .cornerRadius(20)
-                .frame(width: 200)
+                // 左侧占位
+                Spacer()
                 
-                // 分类标签栏
-                HStack(spacing: 8) {
-                    ForEach(ClipboardCategory.allCases, id: \.self) { category in
-                        CategoryButton(
-                            title: category.displayName,
-                            systemImage: category.iconName,
-                            isSelected: selectedCategory == category
-                        ) {
-                            selectedCategory = category
-                            selectedItemIndex = 0 // 切换分类时重置选中项
+                // 中间区域：搜索框和分类按钮
+                HStack(spacing: 16) {
+                    // 搜索框
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(.secondary)
+                            .font(.system(size: 14))
+                        
+                        TextField("搜索剪切板", text: $searchText)
+                            .textFieldStyle(PlainTextFieldStyle())
+                            .font(.system(size: 14))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
+                    .cornerRadius(20)
+                    .frame(width: 200)
+                    
+                    // 分类标签栏
+                    HStack(spacing: 8) {
+                        ForEach(ClipboardCategory.allCases, id: \.self) { category in
+                            CategoryButton(
+                                title: category.displayName,
+                                systemImage: category.iconName,
+                                isSelected: selectedCategory == category
+                            ) {
+                                selectedCategory = category
+                                selectedItemIndex = 0 // 切换分类时重置选中项
+                            }
                         }
                     }
                 }
+                
+                // 右侧占位和清空按钮
+                Spacer()
+                
+                // 清空按钮
+                Button(action: {
+                    showingClearConfirmation = true
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 12, weight: .medium))
+                        Text("清空所有")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.red.opacity(0.1))
+                    )
+                    .foregroundColor(.red)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(clipboardManager.items.isEmpty)
+                .opacity(clipboardManager.items.isEmpty ? 0.5 : 1.0)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
@@ -126,6 +159,15 @@ struct ClipboardView: View {
             handleReturnKeyPress()
             return .handled
         }
+        .alert("确认清空", isPresented: $showingClearConfirmation) {
+            Button("取消", role: .cancel) { }
+            Button("清空所有", role: .destructive) {
+                clipboardManager.clearItems()
+                selectedItemIndex = 0
+            }
+        } message: {
+            Text("确定要清空所有剪切板历史吗？此操作无法撤销。")
+        }
     }
     
     private func handleReturnKeyPress() {
@@ -146,18 +188,32 @@ struct ClipboardView: View {
     var filteredClipboardItems: [ClipboardItem] {
         var items = clipboardManager.items
         
+        print("DEBUG: ClipboardView - 原始项目数量: \(items.count)")
+        print("DEBUG: ClipboardView - 当前分类: \(selectedCategory)")
+        print("DEBUG: ClipboardView - 搜索文本: '\(searchText)'")
+        
         // 按类别过滤
         if selectedCategory != .all {
             items = items.filter { $0.type == selectedCategory }
+            print("DEBUG: ClipboardView - 按分类过滤后项目数量: \(items.count)")
         }
         
         // 按搜索文本过滤
         if !searchText.isEmpty {
             items = items.filter { item in
-                if case .text(let text) = item.content {
+                switch item.content {
+                case .text(let text):
                     return text.localizedCaseInsensitiveContains(searchText)
                 }
-                return false
+            }
+            print("DEBUG: ClipboardView - 按搜索过滤后项目数量: \(items.count)")
+        }
+        
+        print("DEBUG: ClipboardView - 最终显示项目数量: \(items.count)")
+        for (index, item) in items.enumerated() {
+            switch item.content {
+            case .text(let text):
+                print("DEBUG: ClipboardView - 项目 \(index): 文本 - \(text.prefix(30))...")
             }
         }
         
@@ -223,37 +279,6 @@ struct ClipboardItemView: View {
                         .lineLimit(4)
                         .multilineTextAlignment(.leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                case .image(let image):
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color(.controlBackgroundColor))
-                        Image(nsImage: image)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                    }
-                    .frame(width: 180, height: 100)
-                    .cornerRadius(8)
-                    .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
-                    .onTapGesture {
-                        // 创建一个临时窗口来显示完整图片
-                        let window = NSWindow(
-                            contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
-                            styleMask: [.titled, .closable, .resizable],
-                            backing: .buffered,
-                            defer: false
-                        )
-                        window.title = "图片预览"
-                        window.contentView = NSHostingView(rootView: 
-                            Image(nsImage: image)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .padding()
-                        )
-                        window.center()
-                        window.makeKeyAndOrderFront(nil)
-                    }
-
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

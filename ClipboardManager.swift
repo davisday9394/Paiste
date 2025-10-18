@@ -5,13 +5,11 @@ import Combine
 enum ClipboardCategory: String, CaseIterable {
     case all
     case text
-    case image
     
     var displayName: String {
         switch self {
         case .all: return "全部内容"
         case .text: return "文本"
-        case .image: return "图片"
         }
     }
     
@@ -19,7 +17,6 @@ enum ClipboardCategory: String, CaseIterable {
         switch self {
         case .all: return "clipboard"
         case .text: return "doc.text"
-        case .image: return "photo"
         }
     }
 }
@@ -27,7 +24,6 @@ enum ClipboardCategory: String, CaseIterable {
 // 剪贴板内容
 enum ClipboardContent {
     case text(String)
-    case image(NSImage)
 }
 
 // 剪贴板项目
@@ -61,18 +57,13 @@ class ClipboardItem: Identifiable, Codable {
         try container.encode(date, forKey: .date)
         try container.encode(type.rawValue, forKey: .type)
         
-        // 根据内容类型进行不同的编码
+        // 编码文本内容
         var contentContainer = container.nestedContainer(keyedBy: ContentCodingKeys.self, forKey: .content)
         
         switch content {
         case .text(let text):
             try contentContainer.encode("text", forKey: .type)
             try contentContainer.encode(text, forKey: .value)
-        case .image(let image):
-            if let tiffData = image.tiffRepresentation {
-                try contentContainer.encode("image", forKey: .type)
-                try contentContainer.encode(tiffData, forKey: .value)
-            }
         }
     }
     
@@ -91,22 +82,10 @@ class ClipboardItem: Identifiable, Codable {
         let contentContainer = try container.nestedContainer(keyedBy: ContentCodingKeys.self, forKey: .content)
         let contentType = try contentContainer.decode(String.self, forKey: .type)
         
-        // 定义内容解码所需的键
-        enum ContentCodingKeys: String, CodingKey {
-            case type, value
-        }
-        
         switch contentType {
         case "text":
             let text = try contentContainer.decode(String.self, forKey: .value)
             content = .text(text)
-        case "image":
-            let imageData = try contentContainer.decode(Data.self, forKey: .value)
-            if let image = NSImage(data: imageData) {
-                content = .image(image)
-            } else {
-                throw DecodingError.dataCorruptedError(forKey: .value, in: contentContainer, debugDescription: "Invalid image data")
-            }
         default:
             throw DecodingError.dataCorruptedError(forKey: .type, in: contentContainer, debugDescription: "Unknown content type")
         }
@@ -125,10 +104,6 @@ class ClipboardItem: Identifiable, Codable {
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
             pasteboard.setString(text, forType: .string)
-        case .image(let image):
-            let pasteboard = NSPasteboard.general
-            pasteboard.clearContents()
-            pasteboard.writeObjects([image])
         }
     }
 }
@@ -157,6 +132,15 @@ class ClipboardManager: ObservableObject {
         // 如果没有加载到数据，添加一些示例数据
         if items.isEmpty {
             self.addSampleItems()
+        }
+        
+        // 调试输出：显示当前剪切板历史内容
+        print("DEBUG: ClipboardManager初始化完成，当前有 \(items.count) 个项目")
+        for (index, item) in items.enumerated() {
+            switch item.content {
+            case .text(let text):
+                print("DEBUG: 项目 \(index): 文本 - \(text.prefix(50))...")
+            }
         }
         
         // 设置定时器监控剪贴板变化
@@ -203,62 +187,19 @@ class ClipboardManager: ObservableObject {
     private func checkForPasteboardChanges() {
         let pasteboard = NSPasteboard.general
         if pasteboard.changeCount != lastChangeCount {
+            NSLog("DEBUG: 剪切板变化检测到，changeCount: %d -> %d", lastChangeCount, pasteboard.changeCount)
             lastChangeCount = pasteboard.changeCount
             
             // 检查是否有新的文本
             if let text = pasteboard.string(forType: .string), !text.isEmpty {
+                NSLog("DEBUG: 检测到文本内容: %@", String(text.prefix(50)))
                 let item = ClipboardItem(content: .text(text), type: .text)
                 self.addItem(item)
                 return
             }
             
-            // 检查是否有新的图片
-            if let image = readPasteboardImage() {
-                let item = ClipboardItem(content: .image(image), type: .image)
-                self.addItem(item)
-                return
-            }
+            NSLog("DEBUG: 剪切板变化但未检测到有效内容")
         }
-    }
-    
-    // 从剪贴板读取图片的多种方法
-    private func readPasteboardImage() -> NSImage? {
-        let pasteboard = NSPasteboard.general
-        
-        // 方法1: 直接使用NSImage初始化
-        if let image = NSImage(pasteboard: pasteboard) {
-            print("DEBUG: 成功通过NSImage(pasteboard:)读取图片")
-            return image
-        }
-        
-        // 方法2: 读取TIFF数据
-        if let tiffData = pasteboard.data(forType: .tiff), let image = NSImage(data: tiffData) {
-            print("DEBUG: 成功通过TIFF数据读取图片")
-            return image
-        }
-        
-        // 方法3: 读取PNG数据
-        if let pngData = pasteboard.data(forType: .png), let image = NSImage(data: pngData) {
-            print("DEBUG: 成功通过PNG数据读取图片")
-            return image
-        }
-        
-        // 方法4: 尝试读取其他图片类型
-        let imageTypes = [
-            NSPasteboard.PasteboardType("public.jpeg"),
-            NSPasteboard.PasteboardType("public.gif"),
-            NSPasteboard.PasteboardType("com.apple.pict")
-        ]
-        
-        for type in imageTypes {
-            if let data = pasteboard.data(forType: type), let image = NSImage(data: data) {
-                print("DEBUG: 成功通过\(type.rawValue)类型读取图片")
-                return image
-            }
-        }
-        
-        print("DEBUG: 无法从剪贴板读取图片，可用类型: \(pasteboard.types?.map { $0.rawValue } ?? [])")
-        return nil
     }
     
     // 复制项目到剪贴板
@@ -269,8 +210,6 @@ class ClipboardManager: ObservableObject {
         switch item.content {
         case .text(let text):
             pasteboard.setString(text, forType: .string)
-        case .image(let image):
-            pasteboard.writeObjects([image])
         }
     }
     
@@ -327,42 +266,48 @@ class ClipboardManager: ObservableObject {
         switch (content1, content2) {
         case (.text(let text1), .text(let text2)):
             return text1 == text2
-        case (.image, .image):
-            return true // 简单处理，认为所有图片都是重复的
-        default:
-            return false
         }
     }
     
     func addItem(_ item: ClipboardItem) {
+        NSLog("DEBUG: addItem被调用，内容类型: \(item.type)")
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
             // 检查是否已存在相同内容
-            let isDuplicate = self.items.contains { existingItem in
+            var duplicateIndex: Int? = nil
+            for (index, existingItem) in self.items.enumerated() {
                 switch (existingItem.content, item.content) {
                 case (.text(let existingText), .text(let newText)):
-                    return existingText == newText
-                case (.image, .image):
-                    return true // 简单处理，认为所有图片都是重复的
+                    if existingText == newText {
+                        duplicateIndex = index
+                        break
+                    }
                 default:
-                    return false
+                    continue
                 }
             }
             
-            // 如果不是重复项，才添加到列表
-            if !isDuplicate {
-                // 添加到列表开头
+            if let duplicateIndex = duplicateIndex {
+                // 如果找到重复项，将其移到顶部
+                NSLog("DEBUG: 找到重复项目在索引 \(duplicateIndex)，移动到顶部")
+                let duplicateItem = self.items.remove(at: duplicateIndex)
+                self.items.insert(duplicateItem, at: 0)
+                NSLog("DEBUG: 重复项目已移动到顶部")
+            } else {
+                // 如果不是重复项，添加到列表
+                NSLog("DEBUG: 添加新项目到列表，当前列表长度: \(self.items.count)")
                 self.items.insert(item, at: 0)
+                NSLog("DEBUG: 项目已添加，新列表长度: \(self.items.count)")
                 
                 // 限制存储数量
                 if self.items.count > 100 {
                     self.items.removeLast()
                 }
-                
-                // 保存数据到文件
-                self.saveItems()
             }
+            
+            // 保存数据到文件
+            self.saveItems()
         }
     }
     
