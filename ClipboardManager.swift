@@ -6,14 +6,12 @@ enum ClipboardCategory: String, CaseIterable {
     case all
     case text
     case image
-    case file
     
     var displayName: String {
         switch self {
         case .all: return "全部内容"
         case .text: return "文本"
         case .image: return "图片"
-        case .file: return "文件"
         }
     }
     
@@ -22,7 +20,6 @@ enum ClipboardCategory: String, CaseIterable {
         case .all: return "clipboard"
         case .text: return "doc.text"
         case .image: return "photo"
-        case .file: return "folder"
         }
     }
 }
@@ -31,7 +28,6 @@ enum ClipboardCategory: String, CaseIterable {
 enum ClipboardContent {
     case text(String)
     case image(NSImage)
-    case file(URL)
 }
 
 // 剪贴板项目
@@ -77,9 +73,6 @@ class ClipboardItem: Identifiable, Codable {
                 try contentContainer.encode("image", forKey: .type)
                 try contentContainer.encode(tiffData, forKey: .value)
             }
-        case .file(let url):
-            try contentContainer.encode("file", forKey: .type)
-            try contentContainer.encode(url.absoluteString, forKey: .value)
         }
     }
     
@@ -114,13 +107,6 @@ class ClipboardItem: Identifiable, Codable {
             } else {
                 throw DecodingError.dataCorruptedError(forKey: .value, in: contentContainer, debugDescription: "Invalid image data")
             }
-        case "file":
-            let urlString = try contentContainer.decode(String.self, forKey: .value)
-            if let url = URL(string: urlString) {
-                content = .file(url)
-            } else {
-                throw DecodingError.dataCorruptedError(forKey: .value, in: contentContainer, debugDescription: "Invalid URL string")
-            }
         default:
             throw DecodingError.dataCorruptedError(forKey: .type, in: contentContainer, debugDescription: "Unknown content type")
         }
@@ -143,10 +129,6 @@ class ClipboardItem: Identifiable, Codable {
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
             pasteboard.writeObjects([image])
-        case .file(let url):
-            let pasteboard = NSPasteboard.general
-            pasteboard.clearContents()
-            pasteboard.writeObjects([url as NSURL])
         }
     }
 }
@@ -236,13 +218,6 @@ class ClipboardManager: ObservableObject {
                 self.addItem(item)
                 return
             }
-            
-            // 检查是否有新的文件
-            if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !urls.isEmpty {
-                let item = ClipboardItem(content: .file(urls[0]), type: .file)
-                self.addItem(item)
-                return
-            }
         }
     }
     
@@ -282,15 +257,6 @@ class ClipboardManager: ObservableObject {
             }
         }
         
-        // 方法5: 尝试从文件URL读取图片
-        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !urls.isEmpty {
-            let url = urls[0]
-            if let image = NSImage(contentsOf: url) {
-                print("DEBUG: 成功从URL读取图片: \(url.path)")
-                return image
-            }
-        }
-        
         print("DEBUG: 无法从剪贴板读取图片，可用类型: \(pasteboard.types?.map { $0.rawValue } ?? [])")
         return nil
     }
@@ -305,8 +271,6 @@ class ClipboardManager: ObservableObject {
             pasteboard.setString(text, forType: .string)
         case .image(let image):
             pasteboard.writeObjects([image])
-        case .file(let url):
-            pasteboard.writeObjects([url as NSURL])
         }
     }
     
@@ -365,8 +329,6 @@ class ClipboardManager: ObservableObject {
             return text1 == text2
         case (.image, .image):
             return true // 简单处理，认为所有图片都是重复的
-        case (.file(let url1), .file(let url2)):
-            return url1.path == url2.path
         default:
             return false
         }
@@ -383,8 +345,6 @@ class ClipboardManager: ObservableObject {
                     return existingText == newText
                 case (.image, .image):
                     return true // 简单处理，认为所有图片都是重复的
-                case (.file(let existingURL), .file(let newURL)):
-                    return existingURL.path == newURL.path
                 default:
                     return false
                 }

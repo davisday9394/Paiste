@@ -253,17 +253,7 @@ struct ClipboardItemView: View {
                         window.center()
                         window.makeKeyAndOrderFront(nil)
                     }
-                case .file(let url):
-                    HStack(spacing: 8) {
-                        Image(systemName: "doc.fill")
-                            .font(.system(size: 18))
-                            .foregroundColor(.accentColor)
-                        Text(url.lastPathComponent)
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundColor(.primary)
-                            .lineLimit(2)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

@@ -652,8 +652,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     }
     
     private func restorePreviousAppFocus() {
-        // 延迟一小段时间确保窗口隐藏动画完成
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+        // 延迟更长时间确保桌面切换动画完成（如果有的话）
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             guard let self = self, let previousApp = self.previousActiveApp else { return }
             
             // 尝试激活之前的应用程序
