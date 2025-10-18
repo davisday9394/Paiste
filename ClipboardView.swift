@@ -174,14 +174,18 @@ struct ClipboardView: View {
         guard !filteredClipboardItems.isEmpty && selectedItemIndex < filteredClipboardItems.count else { return }
         
         let selectedItem = filteredClipboardItems[selectedItemIndex]
+        
+        // 立即复制到剪贴板
         clipboardManager.copyItemToPasteboard(selectedItem)
         
-        // 将选中项移到第一位
-        clipboardManager.moveItemToTop(selectedItem)
-        
-        // 正确关闭弹窗 - 使用AppDelegate的方法而不是window.close()
+        // 立即关闭窗口，提升响应速度
         if let appDelegate = AppDelegate.shared {
             appDelegate.hideClipboardWindow()
+        }
+        
+        // 在后台异步处理数据重排，避免阻塞UI
+        DispatchQueue.main.async {
+            clipboardManager.moveItemToTop(selectedItem)
         }
     }
     

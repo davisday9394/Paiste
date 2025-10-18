@@ -652,8 +652,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     }
     
     private func restorePreviousAppFocus() {
-        // 延迟更长时间确保桌面切换动画完成（如果有的话）
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+        // 使用较短的延迟确保窗口关闭动画完成，提升用户体验
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             guard let self = self, let previousApp = self.previousActiveApp else { return }
             
             // 尝试激活之前的应用程序
@@ -698,10 +698,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         let targetY = screenFrame.minY - currentFrame.height - 20
         let targetFrame = NSRect(x: currentFrame.minX, y: targetY, width: currentFrame.width, height: currentFrame.height)
         
-        // 优化的快速隐藏动画
+        // 超快速隐藏动画，提升用户体验
         NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.08  // 减少动画时间从0.15到0.08秒
-            context.timingFunction = CAMediaTimingFunction(name: .easeOut)  // 使用更快的缓动函数
+            context.duration = 0.05  // 进一步减少动画时间到0.05秒
+            context.timingFunction = CAMediaTimingFunction(name: .easeIn)  // 使用easeIn获得更快的开始
             window.animator().alphaValue = 0.0
             window.animator().setFrame(targetFrame, display: true)
         }) { [weak self] in
