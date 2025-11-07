@@ -88,11 +88,11 @@ struct ClipboardView: View {
             VStack(spacing: 0) {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHGrid(rows: [GridItem(.fixed(180))], spacing: 12) {
+                        LazyHStack(spacing: 12) {
                             ForEach(Array(filteredClipboardItems.enumerated()), id: \.element.id) { index, item in
-                                ClipboardItemView(item: item)
+                                ClipboardItemView(item: item, isSelected: index == selectedItemIndex)
                                     .id(item.id)
-                                    .frame(width: 220)
+                                    .frame(width: 220, height: 180)
                                     .background(
                                         RoundedRectangle(cornerRadius: 12)
                                             .fill(index == selectedItemIndex ? Color.accentColor.opacity(0.1) : Color.clear)
@@ -101,8 +101,8 @@ struct ClipboardView: View {
                                         RoundedRectangle(cornerRadius: 12)
                                             .stroke(index == selectedItemIndex ? Color.accentColor : Color.clear, lineWidth: 2)
                                     )
-                                    .scaleEffect(index == selectedItemIndex ? 1.02 : 1.0)
-                                    .animation(.easeInOut(duration: 0.15), value: selectedItemIndex)
+                                    .scaleEffect(index == selectedItemIndex ? 1.05 : 1.0)
+                                    .animation(.easeInOut(duration: 0.12), value: index == selectedItemIndex)
                                     .onTapGesture {
                                         selectedItemIndex = index
                                     }
@@ -114,9 +114,7 @@ struct ClipboardView: View {
                     .onChange(of: selectedItemIndex) { newValue in
                         // 当选中项变化时，滚动到选中项
                         if !filteredClipboardItems.isEmpty && newValue < filteredClipboardItems.count {
-                            withAnimation(.easeOut(duration: 0.1)) {
-                                proxy.scrollTo(filteredClipboardItems[newValue].id, anchor: .center)
-                            }
+                            proxy.scrollTo(filteredClipboardItems[newValue].id, anchor: .center)
                         }
                     }
                     .onAppear {
@@ -256,6 +254,7 @@ struct CategoryButton: View {
 
 struct ClipboardItemView: View {
     let item: ClipboardItem
+    let isSelected: Bool
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -278,7 +277,7 @@ struct ClipboardItemView: View {
                 switch item.content {
                 case .text(let text):
                     Text(text)
-                        .font(.system(size: 15, weight: .regular))
+                        .font(.system(size: 15, weight: isSelected ? .medium : .regular))
                         .foregroundColor(.primary)
                         .lineLimit(4)
                         .multilineTextAlignment(.leading)
