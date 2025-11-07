@@ -257,38 +257,38 @@ struct ClipboardItemView: View {
     let isSelected: Bool
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // 顶部信息栏
-            HStack {
+        VStack(alignment: .leading, spacing: 0) {
+            // 顶部信息栏 - 缩小高度
+            HStack(spacing: 6) {
                 Image(systemName: item.type.iconName)
                     .foregroundColor(.secondary)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                 Text(item.type.displayName)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.secondary)
                 Spacer()
                 Text(item.dateFormatted)
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary.opacity(0.8))
             }
+            .padding(.bottom, 10)
             
-            // 内容预览
+            // 内容预览 - 增加行数，填充更多空间
             Group {
                 switch item.content {
                 case .text(let text):
                     Text(text)
-                        .font(.system(size: 15, weight: isSelected ? .medium : .regular))
+                        .font(.system(size: 14, weight: isSelected ? .medium : .regular))
                         .foregroundColor(.primary)
-                        .lineLimit(4)
+                        .lineLimit(8)
+                        .lineSpacing(2)
                         .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            
-            Spacer()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .padding(16)
+        .padding(14)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 12)
