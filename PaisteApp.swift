@@ -540,9 +540,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         window.backgroundColor = NSColor.clear
         window.hasShadow = true
         window.isMovable = false
-        // 不设置 canJoinAllSpaces，让窗口只在当前桌面显示
-        // stationary 确保窗口不会跟随到其他桌面
-        window.collectionBehavior = [.stationary, .fullScreenAuxiliary]
+        // moveToActiveSpace: 窗口会移动到当前活动的桌面
+        // transient: 窗口不会在 Mission Control 中显示
+        window.collectionBehavior = [.moveToActiveSpace, .transient, .fullScreenAuxiliary]
         window.acceptsMouseMovedEvents = true
         
         // 设置内容视图
@@ -566,6 +566,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private func showClipboardWindow() {
         guard let window = clipboardWindow else { return }
         
+        // 先确保窗口完全隐藏（如果它在其他桌面）
+        window.orderOut(nil)
+        
         // 记录当前活跃的应用程序（在显示剪切板窗口前）
         previousActiveApp = NSWorkspace.shared.frontmostApplication
         
@@ -588,6 +591,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         
         let newWindowFrame = NSRect(x: windowX, y: windowY, width: windowWidth, height: windowHeight)
         window.setFrame(newWindowFrame, display: false)
+        
+        // 强制窗口移动到当前活动的桌面
+        // 通过设置 collectionBehavior 来确保窗口出现在当前桌面
+        window.collectionBehavior = [.moveToActiveSpace, .transient, .fullScreenAuxiliary]
         
         let windowFrame = window.frame
         
@@ -678,6 +685,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // 停止失焦监听
         window.stopFocusMonitoring()
         
+        // 改变窗口行为，让它不再跟随到其他桌面
+        window.collectionBehavior = [.stationary, .transient, .fullScreenAuxiliary]
+        
         // 从底部隐藏的实现
         hideToBottom(window: window)
         
@@ -696,6 +706,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         
         // 停止失焦监听
         window.stopFocusMonitoring()
+        
+        // 改变窗口行为，让它不再跟随到其他桌面
+        window.collectionBehavior = [.stationary, .transient, .fullScreenAuxiliary]
         
         // 立即隐藏窗口，不播放任何动画
         window.orderOut(nil)
