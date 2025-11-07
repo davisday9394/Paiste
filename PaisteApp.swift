@@ -5,6 +5,7 @@ import ServiceManagement
 class ClipboardWindow: NSWindow {
     weak var appDelegate: AppDelegate?
     private var globalMouseMonitor: Any?
+    private var globalKeyMonitor: Any?
     private var applicationObserver: NSObjectProtocol?
     private var workspaceObserver: NSObjectProtocol?
     
@@ -19,6 +20,7 @@ class ClipboardWindow: NSWindow {
     // 开始监听失焦事件
     func startFocusMonitoring() {
         setupGlobalMouseMonitor()
+        setupGlobalKeyMonitor()
         setupApplicationSwitchMonitor()
         setupWorkspaceMonitor()
     }
@@ -28,6 +30,11 @@ class ClipboardWindow: NSWindow {
         if let monitor = globalMouseMonitor {
             NSEvent.removeMonitor(monitor)
             globalMouseMonitor = nil
+        }
+        
+        if let monitor = globalKeyMonitor {
+            NSEvent.removeMonitor(monitor)
+            globalKeyMonitor = nil
         }
         
         if let observer = applicationObserver {
@@ -60,7 +67,38 @@ class ClipboardWindow: NSWindow {
         }
     }
     
-    // 监听应用切换事件（Cmd+Tab）
+    // 监听全局键盘事件（捕获 Ctrl+左右键等桌面切换快捷键）
+    private func setupGlobalKeyMonitor() {
+        globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
+            guard let self = self, let appDelegate = self.appDelegate else { return }
+            guard self.isVisible else { return }
+            
+            let flags = event.modifierFlags
+            
+            // 检测 Ctrl+左箭头 或 Ctrl+右箭头（桌面切换）
+            if flags.contains(.control) {
+                if event.type == .keyDown {
+                    let keyCode = event.keyCode
+                    // 123 = 左箭头, 124 = 右箭头
+                    if keyCode == 123 || keyCode == 124 {
+                        // 立即隐藏窗口，不等待桌面切换通知
+                        DispatchQueue.main.async {
+                            appDelegate.hideClipboardWindowImmediately()
+                        }
+                    }
+                }
+            }
+            
+            // 检测 Cmd+Tab（应用切换）
+            if flags.contains(.command) && event.type == .keyDown && event.keyCode == 48 { // 48 = Tab
+                DispatchQueue.main.async {
+                    appDelegate.hideClipboardWindowImmediately()
+                }
+            }
+        }
+    }
+    
+    // 监听应用切换事件（作为备用方案）
     private func setupApplicationSwitchMonitor() {
         applicationObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didResignActiveNotification,
@@ -68,8 +106,10 @@ class ClipboardWindow: NSWindow {
             queue: .main
         ) { [weak self] _ in
             guard let self = self, let appDelegate = self.appDelegate else { return }
-            // 应用失去焦点，隐藏剪切板
-            appDelegate.hideClipboardWindow()
+            guard let window = appDelegate.clipboardWindow, window.isVisible else { return }
+            
+            // 应用失去焦点时隐藏窗口（作为备用方案，主要由键盘监听器处理）
+            appDelegate.hideClipboardWindowImmediately()
         }
     }
     
@@ -81,10 +121,12 @@ class ClipboardWindow: NSWindow {
             queue: .main
         ) { [weak self] _ in
             guard let self = self, let appDelegate = self.appDelegate else { return }
-            // 立即清除之前的应用引用，防止跳回原桌面
+            // 桌面切换已发生，清除之前的应用引用，防止跳回原桌面
             appDelegate.clearPreviousApp()
-            // 桌面切换，隐藏剪切板但不恢复焦点（避免跳回原桌面）
-            appDelegate.hideClipboardWindow(restoreFocus: false)
+            // 确保窗口已隐藏（通常已经被 didResignActiveNotification 隐藏了）
+            if let window = appDelegate.clipboardWindow, window.isVisible {
+                appDelegate.hideClipboardWindowImmediately()
+            }
         }
     }
     
@@ -498,7 +540,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         window.backgroundColor = NSColor.clear
         window.hasShadow = true
         window.isMovable = false
-        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        // 不设置 canJoinAllSpaces，让窗口只在当前桌面显示
+        // stationary 确保窗口不会跟随到其他桌面
+        window.collectionBehavior = [.stationary, .fullScreenAuxiliary]
         window.acceptsMouseMovedEvents = true
         
         // 设置内容视图
@@ -644,6 +688,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             // 清除记录的应用程序引用，但不激活
             previousActiveApp = nil
         }
+    }
+    
+    // 立即隐藏剪切板窗口（无动画，用于桌面切换等场景）
+    func hideClipboardWindowImmediately() {
+        guard let window = clipboardWindow else { return }
+        
+        // 停止失焦监听
+        window.stopFocusMonitoring()
+        
+        // 立即隐藏窗口，不播放任何动画
+        window.orderOut(nil)
+        window.alphaValue = 1.0
+        
+        // 清除记录的应用程序引用，但不激活（避免跳回原桌面）
+        previousActiveApp = nil
     }
     
     // 清除之前的应用引用（用于桌面切换等场景）
